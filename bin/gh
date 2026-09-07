@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# gh を Docker コンテナ経由で実行するラッパー（Linux/macOS/Git Bash 用）。
+# PATH の通った場所に置くか、シェルで alias を張って使う:
+#   alias gh="$(git rev-parse --show-toplevel)/bin/gh"
+set -euo pipefail
+
+# Git Bash (Windows) のパス自動変換を無効化（/work などが化けるのを防ぐ）。
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL='*'
+
+IMAGE="${GH_IMAGE:-base-agentic-coding-gh:latest}"
+
+# GITHUB_TOKEN も受け付ける。
+: "${GH_TOKEN:=${GITHUB_TOKEN:-}}"
+export GH_TOKEN
+
+if [ -z "${GH_TOKEN}" ]; then
+  echo "警告: GH_TOKEN(または GITHUB_TOKEN) が未設定です。認証が必要な操作は失敗します。" >&2
+fi
+
+# git リポジトリのトップを /work にマウントし、カレントの相対位置を作業ディレクトリにする。
+if repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  rel="$(realpath --relative-to="${repo_root}" "$(pwd)" 2>/dev/null || echo ".")"
+  workdir="/work/${rel#./}"
+else
+  repo_root="$(pwd)"
+  workdir="/work"
+fi
+
+# 対話端末なら -t を付ける。
+tty_flag=()
+[ -t 0 ] && tty_flag=(-t)
+
+exec docker run --rm -i "${tty_flag[@]}" \
+  -v "${repo_root}:/work" \
+  -w "${workdir}" \
+  -e GH_TOKEN \
+  -e GH_HOST \
+  -e GH_REPO \
+  -u "$(id -u):$(id -g)" \
+  "${IMAGE}" "$@"
