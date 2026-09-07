@@ -1,4 +1,5 @@
-# Issue コメント「/openspec archive <change-id>」で OpenSpec の変更をアーカイブし PR を作る。
+# Issue コメント「/openspec [archive] [<change-id> ...]」で OpenSpec の変更をアーカイブし PR を作る。
+# change-id 未指定なら Issue の内容から自動判定（1〜複数）。判定不能時は候補＋Gemini 推測をコメント。
 # archive は API キー不要・ルールベース（documents/openspec/ 配下で実行）。
 name: OpenSpec Archive
 
@@ -7,8 +8,8 @@ on:
     types: [created]
   workflow_dispatch:
     inputs:
-      change_id:
-        description: "アーカイブする change-id"
+      change_ids:
+        description: "アーカイブする change-id（空白/カンマ区切りで複数可）"
         required: true
 
 permissions:
@@ -17,16 +18,15 @@ permissions:
   issues: write
 
 concurrency:
-  group: openspec-archive-${{ github.event.issue.number || github.event.inputs.change_id }}
+  group: openspec-archive-${{ github.event.issue.number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   archive:
-    # Issue（PR ではない）へのコメントで、コマンド形式かつ権限のある人のみ。
     if: >-
       github.event_name == 'workflow_dispatch' ||
       ( github.event.issue.pull_request == null &&
-        startsWith(github.event.comment.body, '/openspec archive') &&
+        startsWith(github.event.comment.body, '/openspec') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) )
     runs-on: ubuntu-latest
     steps:
@@ -42,25 +42,6 @@ jobs:
               content: 'eyes',
             });
 
-      - name: change-id を取り出す
-        id: parse
-        uses: actions/github-script@v7
-        with:
-          script: |
-            let change;
-            if (context.eventName === 'workflow_dispatch') {
-              change = context.payload.inputs.change_id;
-            } else {
-              const m = context.payload.comment.body.trim()
-                .match(/^\/openspec\s+archive\s+([A-Za-z0-9._/-]+)/);
-              if (!m) {
-                core.setFailed('使い方: `/openspec archive <change-id>`');
-                return;
-              }
-              change = m[1];
-            }
-            core.setOutput('change', change);
-
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -71,41 +52,189 @@ jobs:
 
       - name: documents/openspec/ の存在確認
         run: |
-          if [ ! -d documents/openspec ]; then
-            echo "::error::documents/openspec/ が未初期化です。ローカルで 'cd documents && npx -y @fission-ai/openspec@latest init' を実行してコミットしてください。"
+          if [ ! -d documents/openspec/changes ]; then
+            echo "::error::documents/openspec/changes/ がありません。ローカルで 'cd documents && npx -y @fission-ai/openspec@latest init' を実行してコミットしてください。"
             exit 1
           fi
 
+      - name: 対象 change-id を決定
+        id: determine
+        uses: actions/github-script@v7
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        with:
+          script: |
+            const fs = require('fs');
+            const base = 'documents/openspec/changes';
+            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            const active = fs.readdirSync(base, { withFileTypes: true })
+              .filter((d) => d.isDirectory() && d.name !== 'archive')
+              .map((d) => d.name);
+
+            const isDispatch = context.eventName === 'workflow_dispatch';
+            const rawArgs = isDispatch
+              ? (context.payload.inputs.change_ids || '')
+              : ((context.payload.comment.body.trim()
+                  .match(/^\/openspec(?:\s+archive)?\s*([\s\S]*)$/) || [])[1] || '');
+            const tokens = rawArgs.split(/[\s,]+/).filter(Boolean);
+
+            const issueText = isDispatch
+              ? ''
+              : `${context.payload.issue.title}\n\n${context.payload.issue.body || ''}`;
+
+            const comment = async (bodyLines) => {
+              if (isDispatch) { core.info(bodyLines); return; }
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: bodyLines,
+              });
+            };
+
+            const geminiGuess = async () => {
+              const key = process.env.GEMINI_API_KEY;
+              if (!key || !issueText.trim()) return null;
+              const summaries = active.map((id) => {
+                let p = '';
+                try {
+                  p = fs.readFileSync(`${base}/${id}/proposal.md`, 'utf8')
+                    .split('\n').slice(0, 25).join('\n');
+                } catch (e) { /* proposal.md なし */ }
+                return `## ${id}\n${p}`;
+              }).join('\n\n');
+              const prompt =
+                'あなたは OpenSpec の変更提案を整理するアシスタントです。\n' +
+                '次の Issue に最も関連する変更提案を下の候補 change-id から選んでください。\n' +
+                '複数該当する場合は複数挙げて構いません。\n' +
+                '出力は1行目に change-id をカンマ区切り、2行目に短い理由のみ。\n\n' +
+                `# Issue\n${issueText}\n\n# 候補\n${summaries}`;
+              try {
+                const res = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+                  {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+                  },
+                );
+                if (!res.ok) { core.warning(`Gemini API: ${res.status}`); return null; }
+                const j = await res.json();
+                return j.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+              } catch (e) {
+                core.warning(`Gemini 呼び出し失敗: ${e.message}`);
+                return null;
+              }
+            };
+
+            let targets = [];
+
+            if (tokens.length) {
+              const known = tokens.filter((t) => active.includes(t));
+              const unknown = tokens.filter((t) => !active.includes(t));
+              if (!known.length) {
+                await comment(
+                  `指定された change-id が見つかりません: ${tokens.join(', ')}\n\n` +
+                  `未アーカイブの候補: ${active.join(', ') || 'なし'}`,
+                );
+                core.setOutput('ids', '');
+                return;
+              }
+              if (unknown.length) core.warning(`未知の change-id を無視: ${unknown.join(', ')}`);
+              targets = known;
+            } else if (active.length === 0) {
+              await comment('未アーカイブの change がありません。');
+              core.setOutput('ids', '');
+              return;
+            } else {
+              const matched = active.filter((id) =>
+                new RegExp(`(^|[^A-Za-z0-9_-])${esc(id)}([^A-Za-z0-9_-]|$)`).test(issueText));
+              if (matched.length >= 1) {
+                targets = matched;
+              } else if (active.length === 1) {
+                targets = [active[0]];
+              } else {
+                const guess = await geminiGuess();
+                let msg = '🤔 change-id を自動判定できませんでした。\n\n' +
+                  '未アーカイブの候補:\n' + active.map((x) => `- ${x}`).join('\n') + '\n';
+                if (guess) msg += `\n🤖 Gemini の推測:\n${guess}\n`;
+                msg += '\n確定するには `/openspec archive <id> [<id> ...]` とコメントしてください。';
+                await comment(msg);
+                core.setOutput('ids', '');
+                return;
+              }
+            }
+
+            core.info(`対象: ${targets.join(', ')}`);
+            core.setOutput('ids', targets.join(' '));
+
+      - name: ブランチ名を決める
+        id: branch
+        if: steps.determine.outputs.ids != ''
+        env:
+          IDS: ${{ steps.determine.outputs.ids }}
+          FALLBACK: openspec/archive-issue-${{ github.event.issue.number || github.run_id }}
+        run: |
+          set -- $IDS
+          if [ "$#" -eq 1 ]; then
+            echo "name=openspec/archive-$1" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=$FALLBACK" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: openspec archive を実行
+        id: archive
+        if: steps.determine.outputs.ids != ''
         working-directory: documents
-        run: npx -y @fission-ai/openspec@latest archive "${{ steps.parse.outputs.change }}" --yes
+        env:
+          IDS: ${{ steps.determine.outputs.ids }}
+        run: |
+          npm install -g @fission-ai/openspec@latest
+          ok=""; fail=""
+          for id in $IDS; do
+            if openspec archive "$id" --yes; then
+              ok="$ok $id"
+            else
+              fail="$fail $id"
+            fi
+          done
+          echo "ok=${ok# }" >> "$GITHUB_OUTPUT"
+          echo "fail=${fail# }" >> "$GITHUB_OUTPUT"
+          if [ -n "$fail" ]; then echo "::warning::archive 失敗: ${fail# }"; fi
 
       - name: PR を作成
         id: cpr
+        if: steps.determine.outputs.ids != ''
         uses: peter-evans/create-pull-request@v7
         with:
           add-paths: documents/openspec
-          branch: openspec/archive-${{ steps.parse.outputs.change }}
+          branch: ${{ steps.branch.outputs.name }}
           delete-branch: true
-          commit-message: "spec: archive ${{ steps.parse.outputs.change }}"
-          title: "spec: archive ${{ steps.parse.outputs.change }}"
+          commit-message: "spec: archive ${{ steps.determine.outputs.ids }}"
+          title: "spec: archive ${{ steps.determine.outputs.ids }}"
           body: |
             OpenSpec の自動アーカイブ。
 
-            - change-id: `${{ steps.parse.outputs.change }}`
             - 契機: ${{ github.event_name == 'issue_comment' && format('Issue #{0} のコメント', github.event.issue.number) || '手動実行' }}
-
-            `openspec archive ${{ steps.parse.outputs.change }} --yes` の結果。
+            - ✅ archived: `${{ steps.archive.outputs.ok }}`
+            - ❌ failed: `${{ steps.archive.outputs.fail }}`
 
       - name: 結果を Issue にコメント
-        if: github.event_name == 'issue_comment'
+        if: ${{ always() && github.event_name == 'issue_comment' && steps.determine.outputs.ids != '' }}
         uses: actions/github-script@v7
+        env:
+          PR_URL: ${{ steps.cpr.outputs.pull-request-url }}
+          OK_IDS: ${{ steps.archive.outputs.ok }}
+          FAIL_IDS: ${{ steps.archive.outputs.fail }}
         with:
           script: |
-            const url = "${{ steps.cpr.outputs.pull-request-url }}";
-            const body = url
-              ? `✅ \`${{ steps.parse.outputs.change }}\` をアーカイブしました: ${url}`
-              : `ℹ️ 差分がありませんでした（既にアーカイブ済みか、対象が見つかりません）。`;
+            const { PR_URL, OK_IDS, FAIL_IDS } = process.env;
+            let body = '';
+            if (PR_URL) body += `PR: ${PR_URL}\n`;
+            if (OK_IDS) body += `✅ archived: ${OK_IDS}\n`;
+            if (FAIL_IDS) body += `❌ failed: ${FAIL_IDS}\n`;
+            if (!PR_URL && !FAIL_IDS) body += 'ℹ️ 差分がありませんでした（既にアーカイブ済みの可能性）。\n';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

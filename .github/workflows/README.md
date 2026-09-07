@@ -4,10 +4,22 @@ Issue コメントを契機に OpenSpec / OpenWiki を実行し、結果を PR �
 
 | ワークフロー | 契機 | 動作 | Secret |
 |---|---|---|---|
-| `openspec-archive.yml` | Issue コメント `/openspec archive <change-id>` | `documents/openspec/` で `openspec archive <id> --yes` → PR | 不要 |
+| `openspec-archive.yml` | Issue コメント `/openspec [archive] [<change-id> ...]` | `documents/openspec/` で `openspec archive <id> --yes`（複数可）→ PR | `GEMINI_API_KEY`（判定不能時のみ） |
 | `openwiki-update.yml` | Issue コメント `/openwiki` | `documents/openwiki/` で `openwiki code --update` → PR | `GEMINI_API_KEY` |
 
-`workflow_dispatch`（手動実行）にも対応。OpenSpec は `change_id` 入力が必要。
+`workflow_dispatch`（手動実行）にも対応。OpenSpec は `change_ids` 入力（空白/カンマ区切りで複数可）が必要。
+
+### OpenSpec の change-id 判定
+
+`/openspec` コメント時、対象 change-id を次の順で決める:
+
+1. コメントで明示（`/openspec archive add-auth fix-login` など、複数可）
+2. Issue のタイトル/本文に含まれる実在の change-id（1〜複数ヒットで採用）
+3. 未アーカイブの change が1件だけ → それを採用
+4. 判定不能 → 候補一覧 ＋ **Gemini の推測**をコメント（archive はしない。人が 1 の形式で再指定）
+
+複数対象は順に archive し、成功/失敗を PR 本文と返信コメントに記載。1件なら
+ブランチ `openspec/archive-<id>`、複数なら `openspec/archive-issue-<番号>`。
 
 ## 事前準備
 
