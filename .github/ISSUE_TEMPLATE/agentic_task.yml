@@ -1,0 +1,207 @@
+name: "Agentic Coding タスク"
+description: "AI コーディングエージェントが着手・検証できる粒度のタスク Issue"
+title: "[TASK]: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        前提知識のないエージェントが判断を誤らないよう、各項目を具体的に記入してください。
+        曖昧語（適切に・いい感じに）を避け、検証可能な形で書きます。
+
+  - type: input
+    id: summary
+    attributes:
+      label: 一行サマリ
+      description: このタスクを1文で。タイトルと重複してよい。
+      placeholder: "GET /items で items テーブルの全行を JSON 返却する"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: 種別
+      options:
+        - feature
+        - bug
+        - refactor
+        - chore
+        - spike
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 優先度
+      options:
+        - "P0 (緊急)"
+        - "P1 (高)"
+        - "P2 (中)"
+        - "P3 (低)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: estimate
+    attributes:
+      label: 見積り
+      options:
+        - "S (半日)"
+        - "M (1-2日)"
+        - "L (3-5日)"
+        - "XL (要分割)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 目的 / Why
+      description: なぜやるのか。解決したい課題・技術上/ビジネス上の理由。
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 背景 / コンテキスト
+      description: 現状の仕様・経緯・関連議論。エージェントが前提を把握するために必要な情報。
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完了条件 (Acceptance Criteria)
+      description: これが満たされたらクローズできる、という客観的チェックリスト。
+      value: |
+        - [ ]
+        - [ ] 追加/変更したコードにテストがあり CI が green
+        - [ ] ドキュメント更新（必要な場合）
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: スコープ
+      description: 今回やること / やらないこと（スコープクリープ防止）。
+      value: |
+        ### やること
+        -
+
+        ### やらないこと
+        -
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: 関連ファイル / 変更が想定される箇所
+      description: パスと役割をセットで。不明なら「調査対象」と記載。
+      value: |
+        | パス | 役割 / 想定変更 |
+        |------|----------------|
+        | `src/main.go` |  |
+    validations:
+      required: false
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 技術的制約 / 前提
+      description: 使用可否ライブラリ、互換性・性能・セキュリティ要件、既存アーキテクチャの遵守事項。
+      value: |
+        - 言語/ランタイム: Go 1.23、標準ライブラリ優先
+        - 外部依存を追加する場合は理由をコード内コメントに明記
+    validations:
+      required: false
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: 実装方針 / ヒント（任意）
+      description: 望ましいアプローチや複数案のトレードオフ。無ければ空欄でエージェントに委任。
+    validations:
+      required: false
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: テスト要件
+      description: 追加/更新すべきテストの種類と観点。境界値・異常系も。
+      value: |
+        - ユニット:
+        - 結合 / E2E:
+        - 手動確認:
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: 検証方法 (Verification)
+      description: レビュアー / エージェントがコピペで実行できる確認コマンドと期待結果。
+      render: bash
+      value: |
+        docker compose up -d --build
+        curl -s localhost:8080/healthz   # 期待: ok
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影響範囲 / リスク
+      description: 破壊的変更、DB マイグレーション要否、ロールバック手順、他機能への波及。
+      value: |
+        - DB マイグレーション: 要 / 不要
+        - 破壊的変更: 有 / 無（有の場合の移行手順）
+        - ロールバック手順:
+    validations:
+      required: false
+
+  - type: textarea
+    id: breakdown
+    attributes:
+      label: タスク分解
+      description: エージェントが順に進められる粒度。PR を分ける場合は境界を示す。
+      value: |
+        - [ ]
+        - [ ] テスト追加
+        - [ ] ドキュメント更新
+        - [ ] セルフレビュー（完了条件の再確認）
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 参考資料 / リンク
+      description: 設計ドキュメント、API 仕様、関連 PR、外部記事など。
+    validations:
+      required: false
+
+  - type: input
+    id: depends_on
+    attributes:
+      label: 依存 Issue
+      description: 先に完了が必要な Issue 番号（例:#12, #15）。無ければ空欄。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: 着手前チェック
+      options:
+        - label: 完了条件が検証可能な形で書かれている
+          required: true
+        - label: スコープ（やらないこと）が明記されている
+          required: true
+        - label: 検証コマンドが記載されている
+          required: true

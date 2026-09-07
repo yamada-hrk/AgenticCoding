@@ -1,3 +1,7 @@
+<!--
+  GitHub 上で起票する場合は .github/ISSUE_TEMPLATE/agentic_task.yml（Issue Forms）を使う。
+  このファイルはローカルの issues/ ディレクトリで管理する場合の雛形（frontmatter でメタ管理）。
+-->
 ---
 # --- メタ情報（エージェントの動作制御・トラッキング用）---
 id:            ISSUE-000                # 採番。ファイル名と一致させる

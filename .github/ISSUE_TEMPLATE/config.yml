@@ -1,0 +1,6 @@
+# 空 Issue（テンプレートなし）を禁止し、必ずフォーム経由にする
+blank_issues_enabled: false
+contact_links:
+  - name: 質問・相談（Discussions）
+    url: https://github.com/OWNER/REPO/discussions
+    about: タスク化する前の相談やアイデアはこちら
