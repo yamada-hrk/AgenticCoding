@@ -4,7 +4,7 @@ Issue コメントを契機に OpenSpec / OpenWiki を実行し、結果を PR �
 
 | ワークフロー | 契機 | 動作 | Secret |
 |---|---|---|---|
-| `openspec-propose.yml` | Issue コメント `/opsx:propose <アイデア>` | Claude Code が `documents/openspec/` に変更提案を作成 → PR | `CLAUDE_CODE_OAUTH_TOKEN` |
+| `openspec-propose.yml` | Issue コメント `/opsx:propose [補足]` | Issue の内容を依頼として Claude Code が `documents/openspec/` に変更提案を作成 → PR | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `openspec-apply.yml` | Issue コメント `/opsx:apply [<change-id>]` | Claude Code が対象 change の `tasks.md` に沿って `src/` 等を実装 → PR（archive しない） | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `openspec-archive.yml` | Issue コメント `/openspec [archive] [<change-id> ...]` | `documents/openspec/` で `openspec archive <id> --yes`（複数可）→ PR | `GEMINI_API_KEY`（判定不能時のみ） |
 | `openwiki-update.yml` | Issue コメント `/openwiki` | `documents/openwiki/` で `openwiki code --update` → PR | `GEMINI_API_KEY` |
@@ -23,9 +23,11 @@ archive は `change_ids` 入力（空白/カンマ区切りで複数可）が必
 - 認証は Claude サブスク（Pro/Max）の OAuth トークン。使用量はサブスク枠を消費。
 - 曖昧さ・仕様との矛盾があれば、成果物を作らず Issue にコメントして停止する。
 
-**Propose**（`/opsx:propose`）
-- 依頼テキストから change を作り、proposal / specs 差分 / design / tasks を生成。
+**Propose**（`/opsx:propose [補足]`）
+- **Issue のタイトル＋本文**を依頼として change を作り、proposal / specs 差分 / design / tasks を生成。
+  コメントに続けた文があれば追加の補足指示として渡す。
 - **計画のみ**。実装・apply・archive は行わない。
+- 注: Issue 本文は admin 以外が書いた可能性もある（発火は admin 限定）。計画のみ・PR レビュー必須で緩和。
 
 **Apply**（`/opsx:apply [<change-id>]`）
 - 対象 change の `tasks.md` を実装し、チェックを更新。`src/` 等を編集。

@@ -11,7 +11,7 @@ GitHub Issue のコメントで駆動する OpenSpec / OpenWiki のワークフ�
 
 | コメント | 起動するワークフロー | 動作 | 必要 Secret |
 |---|---|---|---|
-| `/opsx:propose <アイデア>` | **OpenSpec Propose** | Claude Code が変更提案（proposal / specs 差分 / design / tasks）を `documents/openspec/` に作成し PR | `CLAUDE_CODE_OAUTH_TOKEN` |
+| `/opsx:propose [補足]` | **OpenSpec Propose** | Issue の内容を依頼として、Claude Code が変更提案（proposal / specs 差分 / design / tasks）を `documents/openspec/` に作成し PR。コメントに続けた文があれば補足指示として扱う | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `/opsx:apply [<change-id>]` | **OpenSpec Apply** | Claude Code が対象 change の `tasks.md` に沿って `src/` 等を実装し PR（archive はしない） | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `/openspec` | **OpenSpec Archive** | Issue 内容から対象 change を自動判定して `archive`（本仕様へ反映）し PR | 不要（判定不能時のみ `GEMINI_API_KEY`） |
 | `/openspec archive <id> [<id> ...]` | **OpenSpec Archive** | 指定した change-id を順に `archive` し PR | 不要 |
@@ -114,8 +114,8 @@ Claude Code なら `documents/` で `/opsx:propose` `/opsx:apply` `/opsx:archive
 ## ワークフローの流れ
 
 ```
-Issue 起票
-  └─ /opsx:propose <アイデア>   → 提案 PR（documents/openspec/changes/<id>/）
+Issue 起票（内容が依頼になる）
+  └─ /opsx:propose               → 提案 PR（documents/openspec/changes/<id>/）
        └─ レビュー・マージ
             └─ /opsx:apply（or ローカルで実装）  → 実装 PR（src/ ＋ tasks.md）
                  │                                    └─ CI（build/vet/test/gofmt）→ レビュー・マージ

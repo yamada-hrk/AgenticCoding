@@ -115,10 +115,21 @@ jobs:
             - 完了したら `cd documents && openspec validate --all --strict` を実行し、
               エラーがあれば修正してから終了してください。
 
-            ## 依頼内容（トリガーコメント）
-            以下の `/opsx:propose` に続くテキストが変更の依頼です。change 名は
-            ここからケバブケースで導出してください。
+            ## 依頼内容
+            この Issue の内容が変更の依頼です。タイトルと本文から意図を読み取り、
+            ケバブケースの change 名を導出してください。
+            トリガーコメントに `/opsx:propose` に続くテキストがあれば、追加の補足指示として扱います
+            （なければ Issue 本文だけで判断）。
 
+            ### Issue タイトル
+            ${{ github.event.issue.title }}
+
+            ### Issue 本文
+            ---
+            ${{ github.event.issue.body }}
+            ---
+
+            ### 追加の補足（トリガーコメント）
             ---
             ${{ github.event.comment.body }}
             ---
