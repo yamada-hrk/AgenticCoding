@@ -1,0 +1,38 @@
+schema: spec-driven
+
+context: |
+  技術スタック: Go 1.23（標準ライブラリ優先、src/ 配下）、PostgreSQL 16、Docker / docker-compose
+  リポジトリ構成: src/（アプリ）, docker/（各イメージ）, documents/（openspec・openwiki）, commands/（gh スクリプト）
+  規約: コメント・ドキュメントは日本語。外部依存を足すときは理由をコードコメントに明記
+  CI: GitHub Actions で OpenSpec(archive/propose) と OpenWiki を Issue コメント駆動で実行
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

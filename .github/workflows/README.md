@@ -4,10 +4,19 @@ Issue コメントを契機に OpenSpec / OpenWiki を実行し、結果を PR �
 
 | ワークフロー | 契機 | 動作 | Secret |
 |---|---|---|---|
+| `openspec-propose.yml` | Issue コメント `/opsx:propose <アイデア>` | Claude Code が `documents/openspec/` に変更提案を作成 → PR | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `openspec-archive.yml` | Issue コメント `/openspec [archive] [<change-id> ...]` | `documents/openspec/` で `openspec archive <id> --yes`（複数可）→ PR | `GEMINI_API_KEY`（判定不能時のみ） |
 | `openwiki-update.yml` | Issue コメント `/openwiki` | `documents/openwiki/` で `openwiki code --update` → PR | `GEMINI_API_KEY` |
 
-`workflow_dispatch`（手動実行）にも対応。OpenSpec は `change_ids` 入力（空白/カンマ区切りで複数可）が必要。
+`openspec-archive` と `openwiki-update` は `workflow_dispatch`（手動実行）にも対応。
+archive は `change_ids` 入力（空白/カンマ区切りで複数可）が必要。
+
+### OpenSpec Propose の仕組み
+
+- Claude Code（`anthropics/claude-code-action`）を CI で実行し、`documents/.claude/skills/openspec-propose/SKILL.md` の手順に従って提案成果物（proposal / specs 差分 / design / tasks）を生成。
+- OpenSpec の実体は `documents/openspec/` にあるため、プロンプトで「`openspec` コマンドは `documents/` をカレントにして実行」と指示している。
+- **計画のみ**。実装や apply は行わない。曖昧な場合は成果物を作らず Issue に質問して停止。
+- 認証は Claude サブスク（Pro/Max）の OAuth トークン。使用量はサブスク枠を消費。
 
 ### OpenSpec の change-id 判定
 
@@ -30,19 +39,18 @@ Issue コメントを契機に OpenSpec / OpenWiki を実行し、結果を PR �
   - "Allow GitHub Actions to create and approve pull requests" にチェック
     （`peter-evans/create-pull-request` が GITHUB_TOKEN で PR を作るため）
 
-### 2. Secret 登録（OpenWiki 用）
+### 2. Secret 登録
 
 - **Settings → Secrets and variables → Actions → New repository secret**
-  - `GEMINI_API_KEY` … Google AI Studio (aistudio.google.com) で発行
+  - `GEMINI_API_KEY` … Google AI Studio (aistudio.google.com) で発行（OpenWiki / OpenSpec archive）
+  - `CLAUDE_CODE_OAUTH_TOKEN` … ローカルで `claude setup-token`（Pro/Max）→ 出力を登録（OpenSpec propose）
 - ローカルの `.env` は Actions からは参照されない。
 
 ### 3. ディレクトリ初期化
 
-- **OpenSpec**: ローカルで一度だけ
-  ```bash
-  cd documents && npx -y @fission-ai/openspec@latest init
-  ```
-  して `documents/openspec/` をコミット。以降 `/opsx:propose` 等で change を作る。
+- **OpenSpec**: 初期化済み（`documents/openspec/` + `documents/.claude/`）。
+  再初期化する場合は `cd documents && npx -y @fission-ai/openspec@latest init --tools claude`。
+  ローカルで `/opsx:*` を使うときも `documents/` をカレントにすること。
 - **OpenWiki**: 初回の `/openwiki` 実行が `documents/openwiki/` をブートストラップする。
 
 ## セキュリティ / 挙動メモ
