@@ -1,0 +1,195 @@
+# Issue コメント「/opsx:apply [<change-id>]」で OpenSpec の変更を実装し PR を作る。
+# 実装は Claude Code（claude-code-action）が担当。tasks.md に沿って src/ 等を編集。
+# archive はしない（確定は /openspec で別途）。
+name: OpenSpec Apply
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+concurrency:
+  group: openspec-apply-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # 実行者がリポジトリ管理者(admin)かどうかだけを判定するゲート。
+  gate:
+    if: >-
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/opsx:apply')
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.perm.outputs.allowed }}
+    steps:
+      - id: perm
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let permission = 'none';
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor,
+              });
+              permission = data.permission;
+            } catch (e) {
+              core.warning(`権限取得に失敗: ${e.message}`);
+            }
+            if (permission === 'admin') {
+              core.setOutput('allowed', 'true');
+              return;
+            }
+            core.setOutput('allowed', 'false');
+            core.notice(`${context.actor} は admin ではありません (${permission})`);
+            if (context.eventName === 'issue_comment') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⛔ このコマンドはリポジトリ管理者のみ実行できます（@${context.actor}: ${permission}）。`,
+              });
+            }
+
+  apply:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: コメントに 👀 を付ける
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: false
+
+      - name: openspec CLI をインストール
+        run: npm install -g @fission-ai/openspec@latest
+
+      - name: documents/openspec/ の存在確認
+        run: |
+          if [ ! -d documents/openspec/changes ]; then
+            echo "::error::documents/openspec/changes/ がありません。先に /opsx:propose で提案を作りマージしてください。"
+            exit 1
+          fi
+
+      - name: 対象 change-id を決定
+        id: determine
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const base = 'documents/openspec/changes';
+            const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+            const active = fs.readdirSync(base, { withFileTypes: true })
+              .filter((d) => d.isDirectory() && d.name !== 'archive')
+              .map((d) => d.name);
+
+            const rawArgs = ((context.payload.comment.body.trim()
+              .match(/^\/opsx:apply\s*([\s\S]*)$/) || [])[1] || '');
+            const tokens = rawArgs.split(/[\s,]+/).filter(Boolean);
+            const issueText =
+              `${context.payload.issue.title}\n\n${context.payload.issue.body || ''}`;
+
+            const comment = async (body) => {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            };
+
+            let target = '';
+
+            if (tokens.length) {
+              const known = tokens.filter((t) => active.includes(t));
+              if (known.length !== 1) {
+                await comment(
+                  `対象 change-id を1つに特定できません: ${tokens.join(', ')}\n\n` +
+                  `未アーカイブの候補: ${active.join(', ') || 'なし'}`,
+                );
+                core.setOutput('id', '');
+                return;
+              }
+              target = known[0];
+            } else if (active.length === 0) {
+              await comment('未アーカイブの change がありません。先に /opsx:propose を。');
+              core.setOutput('id', '');
+              return;
+            } else {
+              const matched = active.filter((id) =>
+                new RegExp(`(^|[^A-Za-z0-9_-])${esc(id)}([^A-Za-z0-9_-]|$)`).test(issueText));
+              if (matched.length === 1) {
+                target = matched[0];
+              } else if (active.length === 1) {
+                target = active[0];
+              } else {
+                await comment(
+                  '🤔 実装対象の change-id を特定できませんでした。\n\n' +
+                  '候補:\n' + active.map((x) => `- ${x}`).join('\n') + '\n\n' +
+                  '`/opsx:apply <change-id>` で指定してください。',
+                );
+                core.setOutput('id', '');
+                return;
+              }
+            }
+
+            core.info(`実装対象: ${target}`);
+            core.setOutput('id', target);
+
+      - name: Claude Code で実装
+        if: steps.determine.outputs.id != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          base_branch: main
+          branch_prefix: openspec/
+          use_commit_signing: true
+          claude_args: |
+            --max-turns 100
+          prompt: |
+            あなたは OpenSpec の「変更適用(apply)」ワークフローを実行します。
+
+            ## 対象
+            change-id: `${{ steps.determine.outputs.id }}`
+
+            ## 厳守事項
+            - OpenSpec の実体は `documents/openspec/` にあります。`openspec` コマンドは
+              必ず `documents/` をカレントにして実行してください
+              （例: `cd documents && openspec status --change "${{ steps.determine.outputs.id }}" --json`）。
+            - 手順書は `documents/.claude/skills/openspec-apply-change/SKILL.md` です。
+              まずこれを読み、記載の手順に厳密に従ってください。
+            - `documents/openspec/changes/${{ steps.determine.outputs.id }}/` の
+              proposal.md / design.md / specs 差分 / tasks.md を読み、tasks.md の各タスクを実装します。
+            - 実装コードはリポジトリルートの `src/` 等に書きます。完了したタスクは
+              `tasks.md` のチェックボックスを更新してください。
+            - **archive はしない**。`openspec archive` は実行禁止（確定は別ワークフロー）。
+            - コードを変更したら `cd src && go build ./... && go vet ./...` が通ることを確認。
+              テストがあれば `go test ./...` も。gofmt 整形も行う。
+            - 判断が必要な設計上の分岐や、仕様と実装の矛盾に気づいた場合は、
+              勝手に決めずに Issue へコメントして停止してください。
+            - スコープは対象 change の tasks.md に限定。無関係な変更やリファクタはしない。

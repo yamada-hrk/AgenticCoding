@@ -12,13 +12,15 @@ GitHub Issue のコメントで駆動する OpenSpec / OpenWiki のワークフ�
 | コメント | 起動するワークフロー | 動作 | 必要 Secret |
 |---|---|---|---|
 | `/opsx:propose <アイデア>` | **OpenSpec Propose** | Claude Code が変更提案（proposal / specs 差分 / design / tasks）を `documents/openspec/` に作成し PR | `CLAUDE_CODE_OAUTH_TOKEN` |
+| `/opsx:apply [<change-id>]` | **OpenSpec Apply** | Claude Code が対象 change の `tasks.md` に沿って `src/` 等を実装し PR（archive はしない） | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `/openspec` | **OpenSpec Archive** | Issue 内容から対象 change を自動判定して `archive`（本仕様へ反映）し PR | 不要（判定不能時のみ `GEMINI_API_KEY`） |
 | `/openspec archive <id> [<id> ...]` | **OpenSpec Archive** | 指定した change-id を順に `archive` し PR | 不要 |
 | `/openwiki` | **OpenWiki Update** | コードから Wiki を再生成して `documents/openwiki/` に出力し PR | `GEMINI_API_KEY` |
 
 - いずれもコメントに 👀 を付けてから実行し、結果を Issue にコメント返信する。
-- 生成物は必ず PR。直接 main には push しない。
+- 生成物は必ず PR。直接 main には push しない。PR は `CI` ワークフロー（`go build` / `vet` / `test` / `gofmt`）で検証される。
 - 手動実行: Actions タブから `OpenSpec Archive` / `OpenWiki Update` を `workflow_dispatch` でも起動可。
+- `/opsx:apply` の change-id は、コメント明示 → Issue 本文との一致（1件のみ）→ 未アーカイブが1件のみ、の順で決定。特定できなければ候補を返して停止（推測はしない）。
 
 ### `/openspec` の change-id 自動判定（上から順に）
 
@@ -64,7 +66,7 @@ documents/
   issue-template.md   ローカル issues/ 運用向けの雛形
 .github/
   ISSUE_TEMPLATE/     GitHub Issue Forms（Agentic Coding タスク）
-  workflows/          OpenSpec / OpenWiki ワークフロー
+  workflows/          OpenSpec(propose/apply/archive) / OpenWiki / CI ワークフロー
 ```
 
 ## ローカル開発
@@ -115,7 +117,11 @@ Claude Code なら `documents/` で `/opsx:propose` `/opsx:apply` `/opsx:archive
 Issue 起票
   └─ /opsx:propose <アイデア>   → 提案 PR（documents/openspec/changes/<id>/）
        └─ レビュー・マージ
-            └─ ローカルで実装（/opsx:apply など）
-                 └─ /openspec                → archive PR（specs/ へ反映）
-Issue コメント /openwiki           → Wiki 更新 PR（随時）
+            └─ /opsx:apply（or ローカルで実装）  → 実装 PR（src/ ＋ tasks.md）
+                 │                                    └─ CI（build/vet/test/gofmt）→ レビュー・マージ
+                 └─ /openspec                       → archive PR（specs/ へ反映）
+Issue コメント /openwiki                              → Wiki 更新 PR（随時）
 ```
+
+`/opsx:apply` はコードを自律生成するためリスクが高い。CI と PR レビューを必ず通すこと。
+使用量は Claude サブスク（Pro/Max）枠を消費する。

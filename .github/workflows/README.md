@@ -5,18 +5,34 @@ Issue コメントを契機に OpenSpec / OpenWiki を実行し、結果を PR �
 | ワークフロー | 契機 | 動作 | Secret |
 |---|---|---|---|
 | `openspec-propose.yml` | Issue コメント `/opsx:propose <アイデア>` | Claude Code が `documents/openspec/` に変更提案を作成 → PR | `CLAUDE_CODE_OAUTH_TOKEN` |
+| `openspec-apply.yml` | Issue コメント `/opsx:apply [<change-id>]` | Claude Code が対象 change の `tasks.md` に沿って `src/` 等を実装 → PR（archive しない） | `CLAUDE_CODE_OAUTH_TOKEN` |
 | `openspec-archive.yml` | Issue コメント `/openspec [archive] [<change-id> ...]` | `documents/openspec/` で `openspec archive <id> --yes`（複数可）→ PR | `GEMINI_API_KEY`（判定不能時のみ） |
 | `openwiki-update.yml` | Issue コメント `/openwiki` | `documents/openwiki/` で `openwiki code --update` → PR | `GEMINI_API_KEY` |
+| `ci.yml` | `src/**` を含む push / PR | `gofmt` / `go vet` / `go build` / `go test`（`src/` で実行） | 不要 |
 
 `openspec-archive` と `openwiki-update` は `workflow_dispatch`（手動実行）にも対応。
 archive は `change_ids` 入力（空白/カンマ区切りで複数可）が必要。
 
-### OpenSpec Propose の仕組み
+### OpenSpec Propose / Apply の仕組み
 
-- Claude Code（`anthropics/claude-code-action`）を CI で実行し、`documents/.claude/skills/openspec-propose/SKILL.md` の手順に従って提案成果物（proposal / specs 差分 / design / tasks）を生成。
-- OpenSpec の実体は `documents/openspec/` にあるため、プロンプトで「`openspec` コマンドは `documents/` をカレントにして実行」と指示している。
-- **計画のみ**。実装や apply は行わない。曖昧な場合は成果物を作らず Issue に質問して停止。
+- Claude Code（`anthropics/claude-code-action`）を CI で実行し、`documents/.claude/skills/` の
+  スキル（`openspec-propose` / `openspec-apply-change`）の手順に従わせる。
+- OpenSpec の実体は `documents/openspec/` にあるため、プロンプトで「`openspec` コマンドは
+  `documents/` をカレントにして実行」と指示している。実装ファイルの編集はリポジトリルート
+  （`src/` など）に対して行う。
 - 認証は Claude サブスク（Pro/Max）の OAuth トークン。使用量はサブスク枠を消費。
+- 曖昧さ・仕様との矛盾があれば、成果物を作らず Issue にコメントして停止する。
+
+**Propose**（`/opsx:propose`）
+- 依頼テキストから change を作り、proposal / specs 差分 / design / tasks を生成。
+- **計画のみ**。実装・apply・archive は行わない。
+
+**Apply**（`/opsx:apply [<change-id>]`）
+- 対象 change の `tasks.md` を実装し、チェックを更新。`src/` 等を編集。
+- **archive は禁止**。`--max-turns 100`。`go build` / `go vet` が通ることを確認させる。
+- change-id 判定: コメント明示 → Issue 本文と一致（1件のみ）→ 未アーカイブが1件のみ、の順。
+  特定できなければ候補を返して停止（**推測はしない**。archive と違い実装は高コストなため）。
+- コードは自律生成されるため **CI（`ci.yml`）と PR レビューを必ず通す**こと。
 
 ### OpenSpec の change-id 判定
 
@@ -43,7 +59,7 @@ archive は `change_ids` 入力（空白/カンマ区切りで複数可）が必
 
 - **Settings → Secrets and variables → Actions → New repository secret**
   - `GEMINI_API_KEY` … Google AI Studio (aistudio.google.com) で発行（OpenWiki / OpenSpec archive）
-  - `CLAUDE_CODE_OAUTH_TOKEN` … ローカルで `claude setup-token`（Pro/Max）→ 出力を登録（OpenSpec propose）
+  - `CLAUDE_CODE_OAUTH_TOKEN` … ローカルで `claude setup-token`（Pro/Max）→ 出力を登録（OpenSpec propose / apply）
 - ローカルの `.env` は Actions からは参照されない。
 
 ### 3. ディレクトリ初期化
