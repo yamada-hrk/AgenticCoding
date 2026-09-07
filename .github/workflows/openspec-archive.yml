@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 実行者がリポジトリ管理者(admin)かどうかだけを判定するゲート。
+  # コマンド実行者と Issue 起票者の両方が admin かを判定するゲート。
   gate:
     if: >-
       github.event_name == 'workflow_dispatch' ||
@@ -36,29 +36,44 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            let permission = 'none';
-            try {
-              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                username: context.actor,
-              });
-              permission = data.permission;
-            } catch (e) {
-              core.warning(`権限取得に失敗: ${e.message}`);
-            }
-            if (permission === 'admin') {
+            // 必要権限。A→B に変える場合はこの判定を write/maintain も許可するよう緩める。
+            const REQUIRED = 'admin';
+            const permLevel = async (username) => {
+              try {
+                const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username,
+                });
+                return data.permission; // 'admin' | 'write' | 'read' | 'none'
+              } catch (e) {
+                core.warning(`権限取得に失敗 (${username}): ${e.message}`);
+                return 'none';
+              }
+            };
+
+            const actor = context.actor;
+            const actorPerm = await permLevel(actor);
+            const isComment = context.eventName === 'issue_comment';
+            const author = isComment ? context.payload.issue.user.login : null;
+            const authorPerm = isComment ? await permLevel(author) : REQUIRED;
+
+            if (actorPerm === REQUIRED && authorPerm === REQUIRED) {
               core.setOutput('allowed', 'true');
               return;
             }
             core.setOutput('allowed', 'false');
-            core.notice(`${context.actor} は admin ではありません (${permission})`);
-            if (context.eventName === 'issue_comment') {
+
+            const reason = actorPerm !== REQUIRED
+              ? `コマンド実行者 @${actor} が管理者ではありません (${actorPerm})。`
+              : `Issue 起票者 @${author} が管理者ではありません (${authorPerm})。管理者が Issue を起票し直してください。`;
+            core.notice(reason);
+            if (isComment) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: `⛔ このコマンドはリポジトリ管理者のみ実行できます（@${context.actor}: ${permission}）。`,
+                body: `⛔ ${reason}`,
               });
             }
 

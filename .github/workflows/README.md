@@ -75,8 +75,14 @@ archive は `change_ids` 入力（空白/カンマ区切りで複数可）が必
 
 - `issue_comment` ワークフローは常にデフォルトブランチのファイルで実行される。
 - 各ワークフローは先頭に `gate` ジョブを持ち、`GET /repos/{}/collaborators/{}/permission`
-  で実行者の権限を確認。**admin 以外は本処理をスキップ**し、Issue に「管理者のみ」と
-  返信して正常終了する（Actions は緑のまま・失敗通知なし）。
+  で **コメント実行者** と **Issue 起票者** の両方が admin かを確認。
+  どちらかが admin でなければ本処理をスキップし、Issue に理由を返信して正常終了する
+  （Actions は緑のまま・失敗通知なし）。
+  - 目的: Issue 本文（Claude に渡る）が信頼できる人の手を経たものであることを保証し、
+    プロンプトインジェクションの余地を潰す。非 admin の要望は admin が起票し直す運用。
+  - 権限レベルは各 gate の `const REQUIRED = 'admin'` の1行。write/maintain も許可したい
+    場合はここを緩める（A→B）。
+  - `workflow_dispatch` は Issue 起票者チェックをスキップ（実行者チェックのみ）。
 - PR は対象 Issue（PR へのコメントは対象外）でのみ作成。
 - GITHUB_TOKEN が作った PR は他ワークフローを再発火しない（ループ防止）。
 - OpenWiki は `documents/openwiki` のみコミット対象。副次生成される
