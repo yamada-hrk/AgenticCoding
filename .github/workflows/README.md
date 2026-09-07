@@ -56,7 +56,9 @@ archive は `change_ids` 入力（空白/カンマ区切りで複数可）が必
 ## セキュリティ / 挙動メモ
 
 - `issue_comment` ワークフローは常にデフォルトブランチのファイルで実行される。
-- 実行できるのは `author_association` が OWNER / MEMBER / COLLABORATOR のユーザーのみ。
+- 各ワークフローは先頭に `gate` ジョブを持ち、`GET /repos/{}/collaborators/{}/permission`
+  で実行者の権限を確認。**admin 以外は本処理をスキップ**し、Issue に「管理者のみ」と
+  返信して正常終了する（Actions は緑のまま・失敗通知なし）。
 - PR は対象 Issue（PR へのコメントは対象外）でのみ作成。
 - GITHUB_TOKEN が作った PR は他ワークフローを再発火しない（ループ防止）。
 - OpenWiki は `documents/openwiki` のみコミット対象。副次生成される

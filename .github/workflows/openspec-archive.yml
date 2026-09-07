@@ -22,12 +22,49 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  archive:
+  # 実行者がリポジトリ管理者(admin)かどうかだけを判定するゲート。
+  gate:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       ( github.event.issue.pull_request == null &&
-        startsWith(github.event.comment.body, '/openspec') &&
-        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) )
+        startsWith(github.event.comment.body, '/openspec') )
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.perm.outputs.allowed }}
+    steps:
+      - id: perm
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let permission = 'none';
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: context.actor,
+              });
+              permission = data.permission;
+            } catch (e) {
+              core.warning(`権限取得に失敗: ${e.message}`);
+            }
+            if (permission === 'admin') {
+              core.setOutput('allowed', 'true');
+              return;
+            }
+            core.setOutput('allowed', 'false');
+            core.notice(`${context.actor} は admin ではありません (${permission})`);
+            if (context.eventName === 'issue_comment') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⛔ このコマンドはリポジトリ管理者のみ実行できます（@${context.actor}: ${permission}）。`,
+              });
+            }
+
+  archive:
+    needs: gate
+    if: needs.gate.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: コメントに 👀 を付ける

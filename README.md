@@ -6,7 +6,8 @@ GitHub Issue のコメントで駆動する OpenSpec / OpenWiki のワークフ�
 ## Issue コメントのトリガー
 
 対象 Issue（PR ではない）にコメントすると対応するワークフローが起動する。
-実行できるのは `author_association` が **OWNER / MEMBER / COLLABORATOR** のユーザーのみ。
+実行できるのは**リポジトリ管理者（admin 権限）のみ**。それ以外のコメントには
+「管理者のみ」と返信して何もしない。
 
 | コメント | 起動するワークフロー | 動作 | 必要 Secret |
 |---|---|---|---|
