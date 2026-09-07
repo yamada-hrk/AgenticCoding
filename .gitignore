@@ -1,0 +1,20 @@
+# 環境変数
+.env
+
+# DB データ（bind mount）
+/data/
+
+# 一時ファイル
+tmp/
+issues/
+
+# Go ビルド成果物
+/src/app
+/src/bin/
+*.exe
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
