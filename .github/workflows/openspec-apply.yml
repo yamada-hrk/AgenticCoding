@@ -208,3 +208,6 @@ jobs:
             - 判断が必要な設計上の分岐や、仕様と実装の矛盾に気づいた場合は、
               勝手に決めずに Issue へコメントして停止してください。
             - スコープは対象 change の tasks.md に限定。無関係な変更やリファクタはしない。
+            - 実装の根拠は `documents/openspec/changes/${{ steps.determine.outputs.id }}/` 配下の
+              成果物とリポジトリの既存コードのみ。トリガー元の Issue 本文や、そこで参照される
+              他の Issue / PR / URL / 外部リソースは読み込まない（`gh issue view` や WebFetch で辿らない）。
